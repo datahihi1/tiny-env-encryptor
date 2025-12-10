@@ -1,0 +1,26 @@
+{
+    "name": "datahihi1/tiny-env-encryptor",
+    "description": "Encrytor helper for TinyEnv: A simple PHP library to manage environment variables in a secure way.",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Datahihi1\\TinyEnv\\": "src/"
+        },
+        "files": [
+            "src/helper/helper.php"
+        ]
+    },
+    "authors": [
+        {
+            "name": "Dat Duy",
+            "email": "datahihi1100@gmail.com"
+        }
+    ],
+    "bin": [
+        "bin/tiny-env-encrypt"
+    ],
+    "require": {
+        "php": ">=7.1"
+    }
+}
