@@ -1,0 +1,197 @@
+#!/usr/bin/env php
+<?php
+
+
+require __DIR__ . '/../../../vendor/autoload.php';
+
+use Datahihi1\TinyEnv\TinyEnv;
+
+use Datahihi1\TinyEnv\Encryptor;
+use Datahihi1\TinyEnv\Decryptor;
+
+$args = $_SERVER['argv'];
+$script = array_shift($args);
+
+if (count($args) < 1) {
+    echo "TinyEnv Encryptor - A simple tool to encrypt .env values\n\n";
+    echo "Usage:\n";
+    echo "  {$script} generate  - Generates a new encryption key\n";
+    echo "  {$script} encrypt   - Encrypts .env values\n";
+    echo "  {$script} decrypt   - Decrypts .env values\n\n";
+    echo "Examples:\n";
+    echo "  {$script} encrypt abc123def456 .env .env.encryted\n";
+    echo "  {$script} encrypt abc123def456 .env .env.encrypted DB_PASSWORD API_SECRET\n";
+    echo "  {$script} decrypt abc123def456 .env.encrypted .env.decrypted\n";
+    echo "  {$script} decrypt abc123def456 .env.encrypted .env.decrypted DB_PASSWORD API_SECRET\n\n";
+    exit(1);
+}
+
+$command = array_shift($args);
+
+switch ($command) {
+    case 'generate':
+        generateKey();
+        break;
+
+    case 'encrypt':
+        encryptCommand($args);
+        break;
+
+    case 'decrypt':
+        decryptCommand($args);
+        break;
+
+    default:
+        die("Unknown command: $command\n");
+}
+function decryptCommand(array $args)
+{
+    if (count($args) < 2) {
+        die("Usage: tiny-env-encryptor decrypt <base64-key> <input.env.encrypted> [output.env] [key1 key2 ...]\n");
+    }
+
+    $secretKey = $args[0];
+    $inputFile = $args[1];
+    $outputFile = $args[2] ?? $inputFile . '.decrypted';
+    $decryptOnly = array_slice($args, 3);
+
+    if (!base64_decode($secretKey, true)) {
+        die("Invalid key: must be base64 encoded.\n");
+    }
+
+    if (!file_exists($inputFile)) {
+        die("File not found: $inputFile\n");
+    }
+
+    $lines = file($inputFile, FILE_IGNORE_NEW_LINES);
+    $decryptor = new Decryptor($secretKey);
+    $variables = [];
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed === '' || strpos($trimmed, '#') === 0) {
+            continue;
+        }
+        $line = preg_replace('/\s+#.*/', '', $line);
+        if (strpos($line, '=') === false) {
+            continue;
+        }
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value);
+        $variables[$key] = $value;
+    }
+
+    if (empty($decryptOnly)) {
+        $decryptOnly = array_keys($variables);
+    }
+
+    $outputLines = [];
+    foreach ($variables as $key => $value) {
+        if (in_array($key, $decryptOnly, true)) {
+            $decrypted = $decryptor->decrypt($value);
+            if (preg_match('/\s|#|"|\'/u', $decrypted)) {
+                $decrypted = '"' . addcslashes($decrypted, '"') . '"';
+            }
+            $outputLines[] = $key . '=' . $decrypted;
+        }
+    }
+
+    $output = implode(PHP_EOL, $outputLines) . PHP_EOL;
+    if (file_put_contents($outputFile, $output) === false) {
+        die("Error writing to: $outputFile\n");
+    }
+
+    echo "Decrypted successfully!\n";
+    echo "Input : $inputFile\n";
+    echo "Output: $outputFile\n";
+    echo "Decrypted keys: " . (empty($decryptOnly) ? "ALL" : implode(', ', $decryptOnly)) . "\n";
+}
+
+function generateKey()
+{
+    $key = base64_encode(random_bytes(32));
+
+    echo "Your encryption key (keep it safe!):\n\n";
+    echo $key . PHP_EOL . PHP_EOL;
+    echo "Add to your .env:\n";
+    echo "TINY_ENV_KEY={$key}\n";
+}
+
+function encryptCommand(array $args)
+{
+    if (count($args) < 2) {
+        die("Usage: tiny-env-encryptor encrypt <base64-key> <input.env> [output.env] [key1 key2 ...]\n");
+    }
+
+    $secretKey = $args[0];
+    $inputFile = $args[1];
+    $outputFile = $args[2] ?? $inputFile;
+    $encryptOnly = array_slice($args, 3);
+
+    if (!base64_decode($secretKey, true)) {
+        die("Invalid key: must be base64 encoded.\n");
+    }
+
+    if (!file_exists($inputFile)) {
+        die("File not found: $inputFile\n");
+    }
+
+    $lines = file($inputFile, FILE_IGNORE_NEW_LINES);
+    $variables = [];
+
+    if (empty($encryptOnly)) {
+        $allKeys = [];
+        foreach ($lines as $line) {
+            $trimmed = trim($line);
+            if ($trimmed === '' || strpos($trimmed, '#') === 0) {
+                continue;
+            }
+            $line = preg_replace('/\s+#.*/', '', $line);
+            if (strpos($line, '=') === false) {
+                continue;
+            }
+            [$key, ] = explode('=', $line, 2);
+            $allKeys[] = trim($key);
+        }
+        $encryptOnly = $allKeys;
+    }
+
+    $envLoader = new TinyEnv(dirname($inputFile));
+    $envLoader->load();
+
+    foreach ($lines as $line) {
+        $trimmed = trim($line);
+        if ($trimmed === '' || strpos($trimmed, '#') === 0) {
+            continue;
+        }
+        $line = preg_replace('/\s+#.*/', '', $line);
+        if (strpos($line, '=') === false) {
+            continue;
+        }
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value);
+        $value = preg_replace('/^([\'"])(.*)\1$/', '$2', $value);
+
+        if (preg_match_all('/\${([A-Z0-9_]+)}/i', $value, $matches)) {
+            foreach ($matches[1] as $varName) {
+                $envVal = TinyEnv::env($varName, '');
+                $value = str_replace('${' . $varName . '}', $envVal, $value);
+            }
+        }
+
+        $variables[$key] = $value;
+    }
+
+    $encryptor = new Encryptor($secretKey);
+    $encryptedContent = $encryptor->generate($variables, $encryptOnly);
+
+    if (file_put_contents($outputFile, $encryptedContent . PHP_EOL) === false) {
+        die("Error writing to: $outputFile\n");
+    }
+
+    echo "Encrypted successfully!\n";
+    echo "Input : $inputFile\n";
+    echo "Output: $outputFile\n";
+    echo "Encrypted keys: " . (empty($encryptOnly) ? "ALL" : implode(', ', $encryptOnly)) . "\n";
+}

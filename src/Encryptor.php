@@ -37,7 +37,7 @@ class Encryptor
         return $static->secretKey;
     }
 
-    private function encryptValue(string $plain): string
+    public function encryptValue(string $plain): string
     {
         $iv = random_bytes(16);
 

@@ -18,9 +18,10 @@
         }
     ],
     "bin": [
-        "bin/tiny-env-encrypt"
+        "tiny-env-encrypt"
     ],
     "require": {
-        "php": ">=7.1"
+        "php": ">=7.1",
+        "datahihi1/tiny-env": "^1.0"
     }
 }
