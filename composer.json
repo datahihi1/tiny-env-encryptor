@@ -22,6 +22,6 @@
     ],
     "require": {
         "php": ">=7.1",
-        "datahihi1/tiny-env": "^1.0"
+        "datahihi1/tiny-env": "1.0.15"
     }
 }
